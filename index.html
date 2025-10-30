@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KING TJ TAC TOE</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#f59e0b; --muted:#94a3b8; --glass: rgba(255,255,255,0.03);
+      --tile-size:90px;
+    }
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial; margin:0; background:linear-gradient(180deg,#071028 0%, #081026 100%); color:#e6eef8; display:flex; align-items:center; justify-content:center; height:100vh}
+    .wrap{width:min(540px,96%); background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:14px; padding:22px; box-shadow: 0 8px 30px rgba(2,6,23,0.6);}
+    header{display:flex; align-items:center; gap:12px;}
+    .logo{width:56px; height:56px; border-radius:10px; background:linear-gradient(135deg,#111827,#0b1220); display:flex; align-items:center; justify-content:center; font-weight:800; color:var(--accent); font-size:18px; box-shadow:0 6px 18px rgba(5,5,10,0.6)}
+    h1{font-size:20px; margin:0}
+    p.by{margin:0; color:var(--muted); font-size:12px}
+
+    .controls{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:14px}
+    .left-controls{display:flex; gap:8px; align-items:center}
+    .btn{background:var(--glass); border:1px solid rgba(255,255,255,0.04); padding:8px 12px; border-radius:8px; cursor:pointer; color:inherit}
+    .btn.primary{background:linear-gradient(90deg,var(--accent), #f97316); color:#04111a; font-weight:700; border:none}
+    .status{font-weight:600}
+
+    .board{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:16px}
+    .cell{aspect-ratio:1/1; width:var(--tile-size); height:var(--tile-size); display:flex; align-items:center; justify-content:center; font-size:36px; border-radius:12px; background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02)); box-shadow: inset 0 -6px 18px rgba(0,0,0,0.6); cursor:pointer; user-select:none}
+    .cell.disabled{cursor:not-allowed; opacity:0.9}
+    .cell.x{color:#e11d48}
+    .cell.o{color:#06b6d4}
+
+    .footer{display:flex; justify-content:space-between; align-items:center; margin-top:14px; color:var(--muted); font-size:13px}
+    .small{font-size:12px}
+
+    .overlay{position:fixed; inset:0; display:none; align-items:center; justify-content:center}
+    .overlay.show{display:flex}
+    .modal{background:var(--card); padding:18px; border-radius:12px; min-width:260px}
+
+    @media (max-width:420px){:root{--tile-size:72px} .logo{width:48px;height:48px}}
+  </style>
+</head>
+<body>
+  <div class="wrap" role="application" aria-label="KING TJ TAC TOE">
+    <header>
+      <div class="logo">KTJ</div>
+      <div>
+        <h1>KING TJ TAC TOE</h1>
+        <p class="by">Created by King TJ — Play against the robot <strong>KING TJ</strong> or with a friend</p>
+      </div>
+    </header>
+
+    <div class="controls">
+      <div class="left-controls">
+        <button class="btn" id="restart">Restart</button>
+        <button class="btn" id="undo">Undo</button>
+        <label class="btn" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="robotToggle"> vs Robot
+        </label>
+        <label class="btn" style="display:flex;align-items:center;gap:8px">
+          <select id="difficulty" aria-label="Difficulty">
+            <option value="easy">Easy</option>
+            <option value="hard" selected>Hard</option>
+          </select>
+        </label>
+      </div>
+      <div>
+        <div class="status" id="status">X's turn</div>
+        <div class="small" id="robotName">Robot: KING TJ</div>
+      </div>
+    </div>
+
+    <div class="board" id="board" role="grid" aria-label="Tic Tac Toe board">
+      <!-- 9 cells injected by JS -->
+    </div>
+
+    <div class="footer">
+      <div>Turn: <span id="turnIndicator">X</span></div>
+      <div>Score — X: <span id="scoreX">0</span> O: <span id="scoreO">0</span> Draws: <span id="scoreD">0</span></div>
+    </div>
+  </div>
+
+  <script>
+    // KING TJ TAC TOE - Single-file HTML + JS
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const turnIndicator = document.getElementById('turnIndicator');
+    const restartBtn = document.getElementById('restart');
+    const undoBtn = document.getElementById('undo');
+    const robotToggle = document.getElementById('robotToggle');
+    const difficultySelect = document.getElementById('difficulty');
+    const scoreXEl = document.getElementById('scoreX');
+    const scoreOEl = document.getElementById('scoreO');
+    const scoreDEl = document.getElementById('scoreD');
+
+    let board = Array(9).fill(null); // null, 'X', 'O'
+    let currentPlayer = 'X';
+    let vsRobot = false;
+    let history = [];
+    let scores = {X:0, O:0, D:0};
+
+    const winLines = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+
+    function createBoard(){
+      boardEl.innerHTML='';
+      for(let i=0;i<9;i++){
+        const c = document.createElement('button');
+        c.className='cell';
+        c.setAttribute('data-i', i);
+        c.setAttribute('role','button');
+        c.setAttribute('aria-label','cell '+(i+1));
+        c.addEventListener('click', onCellClick);
+        boardEl.appendChild(c);
+      }
+      render();
+    }
+
+    function onCellClick(e){
+      const i = Number(e.currentTarget.dataset.i);
+      if(board[i] || checkWinner(board)) return;
+      makeMove(i, currentPlayer);
+      if(vsRobot && currentPlayer==='O') return; // robot plays only for O when active
+
+      // if vsRobot and robot should move now
+      if(vsRobot && currentPlayer==='O') robotPlay();
+      else if(vsRobot && currentPlayer==='X') {
+        // after human X played, robot should reply
+        setTimeout(()=>{ robotPlay(); }, 350);
+      }
+    }
+
+    function makeMove(i, player){
+      board[i]=player;
+      history.push({i,player});
+      render();
+      const winner = checkWinner(board);
+      if(winner){
+        endGame(winner);
+        return;
+      }
+      if(board.every(Boolean)){
+        endGame('draw');
+        return;
+      }
+      currentPlayer = (player==='X')? 'O':'X';
+      updateStatus();
+
+      // If robot toggled and it's robot's turn -> play
+      if(vsRobot && currentPlayer==='O' && !checkWinner(board)){
+        setTimeout(()=> robotPlay(), 300);
+      }
+    }
+
+    function undo(){
+      if(!history.length) return;
+      // undo last two moves if vsRobot (so human gets their turn back), else undo only last
+      if(vsRobot){
+        // remove last move(s)
+        const last = history.pop();
+        board[last.i]=null;
+        if(history.length){
+          const prev = history.pop();
+          board[prev.i]=null;
+          currentPlayer = prev.player;
+        } else {
+          currentPlayer = 'X';
+        }
+      } else {
+        const last = history.pop();
+        board[last.i]=null;
+        currentPlayer = last.player;
+      }
+      render();
+      updateStatus();
+    }
+
+    function checkWinner(b){
+      for(const [a,c,d] of winLines){
+        if(b[a] && b[a]===b[c] && b[a]===b[d]) return b[a];
+      }
+      return null;
+    }
+
+    function endGame(winner){
+      if(winner==='draw'){
+        statusEl.textContent = "It's a draw.";
+        scores.D++;
+      } else {
+        statusEl.textContent = `${winner} wins!`;
+        scores[winner]++;
+        // highlight winning line
+        for(const line of winLines){
+          const [a,b,c] = line;
+          if(board[a] && board[a]===board[b] && board[a]===board[c]){
+            [a,b,c].forEach(i=>{ const el = boardEl.querySelector('[data-i="'+i+'"]'); el.classList.add(board[a].toLowerCase()); el.style.boxShadow='0 8px 30px rgba(0,0,0,0.6), 0 0 0 4px rgba(250,204,21,0.08) inset'; })
+          }
+        }
+      }
+      updateScores();
+      // disable further clicks visually
+      boardEl.querySelectorAll('.cell').forEach(c=>c.classList.add('disabled'));
+    }
+
+    function updateScores(){
+      scoreXEl.textContent = scores.X;
+      scoreOEl.textContent = scores.O;
+      scoreDEl.textContent = scores.D;
+    }
+
+    function updateStatus(){
+      turnIndicator.textContent = currentPlayer;
+      statusEl.textContent = `${currentPlayer}'s turn`;
+    }
+
+    function render(){
+      board.forEach((v,i)=>{
+        const cell = boardEl.querySelector('[data-i="'+i+'"]');
+        cell.textContent = v || '';
+        cell.classList.remove('x','o');
+        if(v) cell.classList.add(v.toLowerCase());
+        cell.classList.toggle('disabled', Boolean(v) || Boolean(checkWinner(board)));
+      });
+      updateStatus();
+    }
+
+    restartBtn.addEventListener('click', ()=>{
+      board = Array(9).fill(null); currentPlayer='X'; history = []; createBoard();
+    });
+    undoBtn.addEventListener('click', undo);
+    robotToggle.addEventListener('change', (e)=>{ vsRobot = e.target.checked; createBoard(); });
+    difficultySelect.addEventListener('change', ()=>{});
+
+    // ROBOT (KING TJ) AI - uses simple minimax for 'hard' and random for 'easy'
+    function robotPlay(){
+      if(!vsRobot) return;
+      if(checkWinner(board) || board.every(Boolean)) return;
+      const robot = 'O';
+      let idx;
+      if(difficultySelect.value==='easy'){
+        const empties = board.map((v,i)=> v? null:i).filter(Number.isInteger);
+        idx = empties[Math.floor(Math.random()*empties.length)];
+      } else {
+        // Hard: minimax with alpha-beta pruning
+        const best = minimax(board.slice(), robot, -Infinity, Infinity);
+        idx = best.idx;
+      }
+      if(typeof idx === 'number') makeMove(idx, 'O');
+    }
+
+    // Minimax implementation - returns {score, idx}
+    function minimax(bd, player, alpha, beta){
+      const winner = checkWinner(bd);
+      if(winner==='X') return {score:-10};
+      if(winner==='O') return {score:10};
+      if(bd.every(Boolean)) return {score:0};
+
+      const moves = [];
+      for(let i=0;i<9;i++){
+        if(!bd[i]){
+          bd[i]=player;
+          const score = minimax(bd, player==='O' ? 'X' : 'O', alpha, beta).score;
+          moves.push({idx:i, score});
+          bd[i]=null;
+
+          // alpha-beta pruning logic when evaluating for 'O' (maximizer) or 'X' (minimizer)
+          if(player==='O'){ // maximizer
+            alpha = Math.max(alpha, score);
+            if(beta <= alpha) break;
+          } else { // minimizer
+            beta = Math.min(beta, score);
+            if(beta <= alpha) break;
+          }
+        }
+      }
+
+      // choose best move depending on player
+      if(player==='O'){
+        // maximize
+        let best = moves.reduce((a,c)=> c.score>a.score? c:a, moves[0]);
+        return best || {score:0};
+      } else {
+        // minimize
+        let best = moves.reduce((a,c)=> c.score<a.score? c:a, moves[0]);
+        return best || {score:0};
+      }
+    }
+
+    // Initialize
+    createBoard();
+    updateScores();
+
+    // Keyboard accessibility: 1-9 keys to play in cells 1..9
+    window.addEventListener('keydown', (e)=>{
+      const k = Number(e.key);
+      if(k>=1 && k<=9){
+        const idx = k-1;
+        if(!board[idx] && !checkWinner(board)){
+          makeMove(idx,currentPlayer);
+        }
+      }
+      if(e.key==='r') restartBtn.click();
+      if(e.key==='u') undoBtn.click();
+    });
+  </script>
+</body>
+</html>
